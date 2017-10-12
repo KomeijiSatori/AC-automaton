@@ -222,12 +222,14 @@ void proceed(TREE_PTR root, char *string_file_name, char *output_file_name)
             else
             {
                 // find the suffix dict
-                if (cur_node->dict != NULL)
+				TREE_PTR cur_dict = cur_node->dict;
+                while (cur_dict != NULL)
                 {
-                    int word_id = cur_node->dict->word_id;
+                    int word_id = cur_dict->word_id;
                     long long word_len = (long long)strlen(word[word_id]);
                     long long offset = (long long)iter * (long long)MAX_BUFFER_SIZE + (long long)i - word_len + 1;
                     fprintf(out, "%s %lld\n", word[word_id], offset);
+					cur_dict = cur_dict->dict;
                 }
 
                 // judge if it is a word
