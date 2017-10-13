@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <queue>
 #include "ac.h"
+using namespace std;
 
 char *word[MAX_WORD_COUNT];
 
@@ -29,7 +31,6 @@ TREE_PTR alloc_tree_node()
     new_node->sibling = NULL;
     new_node->parent = NULL;
     new_node->fail = NULL;
-    new_node->dict = NULL;
     return new_node;
 }
 
@@ -97,76 +98,64 @@ TREE_PTR build_trie_tree(char *filename)
 }
 
 
-void build_fail_ptr(TREE_PTR root, TREE_PTR cur_node)
+void build_fail_ptr(TREE_PTR root)
 {
-    if (root == NULL || cur_node == NULL)
+    if (root == NULL)
     {
         return;
     }
-
-    TREE_PTR cur_parent = cur_node->parent;
-    TREE_PTR parent_fail = cur_parent->fail;
-    // whether cur_node has found the fail link
-    int find = 0;
-    while (parent_fail != NULL && !find)
+    queue<TREE_PTR> nodes;
+    TREE_PTR root_child = root->child;
+    while (root_child != NULL)
     {
-        // the parent's fail node's child
-        TREE_PTR fail_child = parent_fail->child;
-        while (fail_child != NULL)
+        nodes.push(root_child);
+        root_child = root_child->sibling;
+    }
+
+    while (!nodes.empty())
+    {
+        TREE_PTR cur_node = nodes.front();
+        nodes.pop();
+        TREE_PTR cur_child = cur_node->child;
+        while (cur_child != NULL)
         {
-            if (fail_child->ch == cur_node->ch)
+            nodes.push(cur_child);
+            cur_child = cur_child->sibling;
+        }
+
+        TREE_PTR cur_parent = cur_node->parent;
+        TREE_PTR parent_fail = cur_parent->fail;
+        // whether cur_node has found the fail link
+        int find = 0;
+        while (parent_fail != NULL && !find)
+        {
+            // the parent's fail node's child
+            TREE_PTR fail_child = parent_fail->child;
+            while (fail_child != NULL)
             {
-                find = 1;
-                cur_node->fail = fail_child;
-                break;
+                if (fail_child->ch == cur_node->ch)
+                {
+                    find = 1;
+                    cur_node->fail = fail_child;
+                    break;
+                }
+                else
+                {
+                    fail_child = fail_child->sibling;
+                }
             }
-            else
+            // if not found, refer to the fail link of parent_fail
+            if (!find)
             {
-                fail_child = fail_child->sibling;
+                parent_fail = parent_fail->fail;
             }
         }
-        // if not found, refer to the fail link of parent_fail
+        // if reach the root
         if (!find)
         {
-            parent_fail = parent_fail->fail;
+            cur_node->fail = root;
         }
     }
-    // if reach the root
-    if (!find)
-    {
-        cur_node->fail = root;
-    }
-
-    // recursive call to build the children
-    build_fail_ptr(root, cur_node->child);
-    // then build the siblings
-    build_fail_ptr(root, cur_node->sibling);
-}
-
-
-void build_dict_ptr(TREE_PTR cur_node)
-{
-    if (cur_node == NULL)
-    {
-        return;
-    }
-
-    TREE_PTR cur_fail = cur_node->fail;
-    while (cur_fail != NULL)
-    {
-        if (cur_fail->word_id != -1)
-        {
-            cur_node->dict = cur_fail;
-            break;
-        }
-        else
-        {
-            cur_fail = cur_fail->fail;
-        }
-    }
-
-    build_dict_ptr(cur_node->child);
-    build_dict_ptr(cur_node->sibling);
 }
 
 
@@ -221,24 +210,18 @@ void proceed(TREE_PTR root, char *string_file_name, char *output_file_name)
             }
             else
             {
-                // find the suffix dict
-				TREE_PTR cur_dict = cur_node->dict;
-                while (cur_dict != NULL)
+				// judge the string and its substrings could be a word
+				TREE_PTR cur_dict = cur_node;
+                while (cur_dict != root)
                 {
                     int word_id = cur_dict->word_id;
-                    long long word_len = (long long)strlen(word[word_id]);
-                    long long offset = (long long)iter * (long long)MAX_BUFFER_SIZE + (long long)i - word_len + 1;
-                    fprintf(out, "%s %lld\n", word[word_id], offset);
-					cur_dict = cur_dict->dict;
-                }
-
-                // judge if it is a word
-                if (cur_node->word_id != -1)
-                {
-                    int word_id = cur_node->word_id;
-                    long long word_len = (long long)strlen(word[word_id]);
-                    long long offset = (long long)iter * (long long)MAX_BUFFER_SIZE + (long long)i - word_len + 1;
-                    fprintf(out, "%s %lld\n", word[word_id], offset);
+					if (word_id != -1)
+					{
+						long long word_len = (long long)strlen(word[word_id]);
+		                long long offset = (long long)iter * (long long)MAX_BUFFER_SIZE + (long long)i - word_len + 1;
+		                fprintf(out, "%s %lld\n", word[word_id], offset);
+					}
+					cur_dict = cur_dict->fail;
                 }
             }
         }
@@ -282,8 +265,7 @@ int main(int argc, char *argv[])
     init();
     char *string_file_name = argv[1], *pattern_file_name = argv[2], *result_file_name = argv[3];
     TREE_PTR root = build_trie_tree(pattern_file_name);
-    build_fail_ptr(root, root->child);
-    build_dict_ptr(root->child);
+    build_fail_ptr(root);
     proceed(root, string_file_name, result_file_name);
     free_tree(root);
     root = NULL;

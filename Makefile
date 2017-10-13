@@ -1,8 +1,8 @@
 target : ac.o
-	gcc -o ac ac.o
+	g++ -o ac ac.o
 
 ac.o : ac.cpp ac.h
-	gcc -c -g ac.cpp
+	g++ -c -g ac.cpp
 
 clean :
 	rm ac.o

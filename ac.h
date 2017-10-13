@@ -12,8 +12,6 @@ typedef struct treenode
     struct treenode *child, *sibling, *parent;
     // fail link
     struct treenode *fail;
-    // dictionary suffix link
-    struct treenode *dict;
 } TREE_NODE, *TREE_PTR;
 
 
