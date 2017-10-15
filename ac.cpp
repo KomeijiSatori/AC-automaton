@@ -1,7 +1,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <queue>
+
+#include "avltree.h"
 #include "ac.h"
 using namespace std;
 
@@ -18,6 +21,27 @@ void init()
 }
 
 
+int cmp_func(struct avl_node *a, struct avl_node *b, void *aux)
+{
+    TREE_PTR aa, bb;
+    aa = _get_entry(a, TREE_NODE, avl);
+    bb = _get_entry(b, TREE_NODE, avl);
+
+    if (aa->ch < bb->ch)
+    {
+        return -1;
+    }
+    else if (aa->ch > bb->ch)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+
 TREE_PTR alloc_tree_node()
 {
     TREE_PTR new_node = (TREE_PTR)malloc(sizeof(TREE_NODE));
@@ -27,10 +51,9 @@ TREE_PTR alloc_tree_node()
         exit(2);
     }
     new_node->word_id = -1;
-    new_node->child = NULL;
-    new_node->sibling = NULL;
     new_node->parent = NULL;
     new_node->fail = NULL;
+    avl_init(&(new_node->children), NULL);
     return new_node;
 }
 
@@ -54,37 +77,21 @@ TREE_PTR build_trie_tree(char *filename)
         for (ind = 0; cur_word[ind] != '\0'; ind++)
         {
             char cur_ch = cur_word[ind];
-            // if the current node has no children
-            if (cur->child == NULL)
+            TREE_NODE query;
+            query.ch = cur_ch;
+            struct avl_node *res = avl_search(&(cur->children), &query.avl, cmp_func);
+            // if has no such ch in children
+            if (res == NULL)
             {
                 TREE_PTR cur_node = alloc_tree_node();
                 cur_node->ch = cur_ch;
                 cur_node->parent = cur;
-                cur->child = cur_node;
+                avl_insert(&(cur->children), &(cur_node->avl), cmp_func);
                 cur = cur_node;
             }
             else
             {
-                TREE_PTR sibling = cur->child;
-                while (sibling != NULL && sibling->ch != cur_ch)
-                {
-                    sibling = sibling->sibling;
-                }
-                // if not find the same character
-                if (sibling == NULL)
-                {
-                    TREE_PTR follow_sibling = cur->child->sibling;
-                    TREE_PTR cur_node = alloc_tree_node();
-                    cur_node->ch = cur_ch;
-                    cur_node->sibling = follow_sibling;
-                    cur_node->parent = cur;
-                    cur->child->sibling = cur_node;
-                    cur = cur_node;
-                }
-                else
-                {
-                    cur = sibling;
-                }
+                cur = _get_entry(res, TREE_NODE, avl);
             }
         }
         // deal with word end
@@ -105,53 +112,64 @@ void build_fail_ptr(TREE_PTR root)
         return;
     }
     queue<TREE_PTR> nodes;
-    TREE_PTR root_child = root->child;
-    while (root_child != NULL)
-    {
-        nodes.push(root_child);
-        root_child = root_child->sibling;
-    }
+    nodes.push(root);
 
     while (!nodes.empty())
     {
         TREE_PTR cur_node = nodes.front();
         nodes.pop();
-        TREE_PTR cur_child = cur_node->child;
-        while (cur_child != NULL)
+        // add all children into the nodes
+        struct avl_node *first_child = (cur_node->children).root;
+        // if the node has children
+        if (first_child != NULL)
         {
-            nodes.push(cur_child);
-            cur_child = cur_child->sibling;
+            queue<struct avl_node *> children;
+            children.push(first_child);
+            while (!children.empty())
+            {
+                struct avl_node *cur_child = children.front();
+                children.pop();
+                nodes.push(_get_entry(cur_child, TREE_NODE, avl));
+
+                if (cur_child->left != NULL)
+                {
+                    children.push(cur_child->left);
+                }
+                if (cur_child->right != NULL)
+                {
+                    children.push(cur_child->right);
+                }
+            }
+        }
+
+        if (cur_node == root)
+        {
+            continue;
         }
 
         TREE_PTR cur_parent = cur_node->parent;
         TREE_PTR parent_fail = cur_parent->fail;
         // whether cur_node has found the fail link
-        int find = 0;
-        while (parent_fail != NULL && !find)
+        struct avl_node *res = NULL;
+        TREE_NODE query;
+        query.ch = cur_node->ch;
+        while (parent_fail != NULL)
         {
             // the parent's fail node's child
-            TREE_PTR fail_child = parent_fail->child;
-            while (fail_child != NULL)
-            {
-                if (fail_child->ch == cur_node->ch)
-                {
-                    find = 1;
-                    cur_node->fail = fail_child;
-                    break;
-                }
-                else
-                {
-                    fail_child = fail_child->sibling;
-                }
-            }
+            res = avl_search(&(parent_fail->children), &query.avl, cmp_func);
             // if not found, refer to the fail link of parent_fail
-            if (!find)
+            if (res == NULL)
             {
                 parent_fail = parent_fail->fail;
             }
+            else
+            {
+                cur_node->fail = _get_entry(res, TREE_NODE, avl);
+                break;
+            }
         }
         // if reach the root
-        if (!find)
+        if (res == NULL)
         {
             cur_node->fail = root;
         }
@@ -159,7 +177,7 @@ void build_fail_ptr(TREE_PTR root)
 }
 
 
-// output the result in filename
+// proceed to recognize
 void proceed(TREE_PTR root, char *string_file_name, char *output_file_name)
 {
     FILE *in = fopen(string_file_name, "rb");
@@ -179,32 +197,29 @@ void proceed(TREE_PTR root, char *string_file_name, char *output_file_name)
         for (i = 0; i < read_count; i++)
         {
             char cur_ch = buffer[i];
-            int find = 0;
+            TREE_NODE query;
+            query.ch = cur_ch;
+            struct avl_node *res = NULL;
 
             // while root not fail
-            while (cur_node != NULL && !find)
+            while (cur_node != NULL)
             {
                 // search all children to find if ch matches
-                TREE_PTR cur_child = cur_node->child;
-                while (cur_child != NULL)
+                res = avl_search(&(cur_node->children), &query.avl, cmp_func);
+                // if not find, jump to fail
+                if (res == NULL)
                 {
-                    if (cur_child->ch == cur_ch)
-                    {
-                        cur_node = cur_child;
-                        find = 1;
-                        break;
-                    }
-                    cur_child = cur_child->sibling;
-                }
-                if (!find)
-                {
-                    // jump to fail
                     cur_node = cur_node->fail;
+                }
+                else
+                {
+                    cur_node = _get_entry(res, TREE_NODE, avl);
+                    break;
                 }
             }
 
             // if not found the ch in root
-            if (!find)
+            if (res == NULL)
             {
                 cur_node = root;
             }
@@ -219,7 +234,7 @@ void proceed(TREE_PTR root, char *string_file_name, char *output_file_name)
 					{
 						long long word_len = (long long)strlen(word[word_id]);
 		                long long offset = (long long)iter * (long long)MAX_BUFFER_SIZE + (long long)i - word_len + 1;
-		                fprintf(out, "%s %lld\n", word[word_id], offset);
+                        fprintf(out, "%s %lld\n", word[word_id], offset);
 					}
 					cur_dict = cur_dict->fail;
                 }
@@ -235,11 +250,35 @@ void proceed(TREE_PTR root, char *string_file_name, char *output_file_name)
 
 void free_tree(TREE_PTR root)
 {
-    if (root != NULL)
+    queue<TREE_PTR> nodes;
+    nodes.push(root);
+    while (!nodes.empty())
     {
-        free_tree(root->child);
-        free_tree(root->sibling);
-        free(root);
+        TREE_PTR cur_node = nodes.front();
+        nodes.pop();
+        struct avl_node *first_child = (cur_node->children).root;
+
+        if (first_child != NULL)
+        {
+            queue<struct avl_node *> children;
+            children.push(first_child);
+            while (!children.empty())
+            {
+                struct avl_node *cur_child = children.front();
+                children.pop();
+                nodes.push(_get_entry(cur_child, TREE_NODE, avl));
+
+                if (cur_child->left != NULL)
+                {
+                    children.push(cur_child->left);
+                }
+                if (cur_child->right != NULL)
+                {
+                    children.push(cur_child->right);
+                }
+            }
+        }
+        free(cur_node);
     }
 }
 
@@ -256,6 +295,8 @@ void free_word()
 
 int main(int argc, char *argv[])
 {
+    clock_t start_t, end_t;
+    start_t = clock();
     if (argc != 4)
     {
         puts("usage: ./ac [string-file] [pattern-file] [result-file]");
@@ -270,6 +311,8 @@ int main(int argc, char *argv[])
     free_tree(root);
     root = NULL;
     free_word();
+    end_t = clock();
+    double total_t = (double)(end_t - start_t) / CLOCKS_PER_SEC;
+    printf("Total time: %lf\n", total_t);
     return 0;
 }
-

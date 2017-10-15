@@ -1,8 +1,11 @@
-target : ac.o
-	g++ -o ac ac.o
+target : ac.o avltree.o
+	g++ -o ac ac.o avltree.o
 
-ac.o : ac.cpp ac.h
+ac.o : ac.cpp ac.h avltree.h
 	g++ -c -g ac.cpp
 
+avltree.o: avltree.c avltree.h
+	g++ -c -g avltree.c
+
 clean :
-	rm ac.o
+	rm ac.o avltree.o
