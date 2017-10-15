@@ -5,7 +5,7 @@
 
 int MAX_WORD_LEN = 100;
 int const MAX_WORD_COUNT = 1280000;
-int const MAX_BUFFER_SIZE = 1048576;
+int const MAX_BUFFER_SIZE = 1 << 20;
 
 typedef struct treenode
 {
